@@ -1,19 +1,9 @@
 import { ApolloServer, gql } from 'apollo-server';
 import { GraphQLUpload } from 'graphql-upload';
-
-// This is a (sample) collection of books we'll be able to query
-// the GraphQL server for.  A more complete example might fetch
-// from an existing data source like a REST API or database.
-const books = [
-  {
-    title: 'Harry Potter and the Chamber of Secrets',
-    author: 'J.K. Rowling',
-  },
-  {
-    title: 'Jurassic Park',
-    author: 'Michael Crichton',
-  },
-];
+import fs, { readdir } from 'fs';
+import { join } from 'path';
+import { pipeline } from 'stream';
+import { promisify } from 'util';
 
 // Type definitions define the "shape" of your data and specify
 // which ways the data can be fetched from the GraphQL server.
@@ -23,22 +13,14 @@ const typeDefs = gql`
   }
 
   type File {
-    id: ID!
-    path: String!
+    path: String
     filename: String!
-    mimetype: String!
-  }
-
-  # This "Book" type can be used in other type declarations.
-  type Book {
-    title: String
-    author: String
+    mimetype: String
   }
 
   # The "Query" type is the root of all GraphQL queries.
   # (A "Mutation" type will be covered later on.)
   type Query {
-    books: [Book]
     uploads: [File]
   }
 
@@ -51,13 +33,35 @@ const typeDefs = gql`
 // schema.  We'll retrieve books from the "books" array above.
 const resolvers = {
   Mutation: {
-    uploadFile: (parent, args, context, info) => {
-      args.input.file.then(file => console.log(file));
+    uploadFile: async (parent, args, context, info) => {
+      try {
+        const { filename, mimetype, encoding, createReadStream } = await args
+          .input.file;
+
+        const asyncPipeline = promisify(pipeline);
+
+        await asyncPipeline(
+          createReadStream(),
+          fs.createWriteStream(`build/images/${filename}`),
+        );
+
+        return { filename, mimetype, path: `build/images/${filename}` };
+      } catch (e) {
+        console.log(e);
+      }
     },
   },
   Upload: GraphQLUpload,
   Query: {
-    books: () => books,
+    uploads: async () => {
+      const asyncReaddir = promisify(readdir);
+      let allFiles = [];
+      const files = (await asyncReaddir('build/images/')).map(f => ({
+        path: join('build/images/', f),
+        filename: f,
+      }));
+      return files;
+    },
   },
 };
 

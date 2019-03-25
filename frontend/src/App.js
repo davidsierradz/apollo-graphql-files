@@ -7,10 +7,6 @@ import { createUploadLink } from 'apollo-upload-client';
 
 import './App.css';
 
-//const client = new ApolloClient({
-//uri: 'http://localhost:4000/graphql',
-//});
-
 const client = new ApolloClient({
   link: createUploadLink({
     uri: 'http://localhost:4000/graphql',
@@ -18,7 +14,7 @@ const client = new ApolloClient({
   cache: new InMemoryCache(),
 });
 
-const UpdateFile = () => {
+const UpdateFile = ({ updateUploads }) => {
   let input;
 
   return (
@@ -27,47 +23,54 @@ const UpdateFile = () => {
         mutation UploadFile($input: UploadFileInput!) {
           uploadFile(input: $input) {
             filename
-            mimetype
+            path
           }
         }
       `}
+      update={(cache, { data: { uploadFile } }) => {
+        uploadFile && updateUploads(uploadFile);
+      }}
     >
-      {(addFile, { data }) => (
-        <div>
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              console.table(input);
-              addFile({
-                variables: {
-                  input: {
-                    file: input.files[0],
+      {(addFile, { loading, error }) => {
+        return (
+          <div>
+            <form
+              onSubmit={e => {
+                e.preventDefault();
+                addFile({
+                  variables: {
+                    input: {
+                      file: input.files[0],
+                    },
                   },
-                },
-              });
-            }}
-          >
-            <input
-              type="file"
-              ref={node => {
-                input = node;
+                });
+                input.value = '';
               }}
-            />
-            <button type="submit">Upload File</button>
-          </form>
-        </div>
-      )}
+            >
+              <input
+                type="file"
+                ref={node => {
+                  input = node;
+                }}
+              />
+              <button type="submit">Upload File</button>
+            </form>
+            {loading && <p>Loading...</p>}
+            {error && <p>Error :( Please try again</p>}
+          </div>
+        );
+      }}
     </Mutation>
   );
 };
 
-const GetBooks = () => (
+const GetUploadsQuery = () => (
   <Query
     query={gql`
       query {
-        books {
-          title
-          author
+        uploads {
+          filename
+          path
         }
       }
     `}
@@ -76,28 +79,48 @@ const GetBooks = () => (
       if (loading) return <p>Loading...</p>;
       if (error) return <p>Error</p>;
 
-      return (
-        <>
-          <UpdateFile />
-          {data.books.map(({ title, author }) => (
-            <div key={title}>
-              <p>
-                {author}: {title}
-              </p>
-            </div>
-          ))}
-        </>
-      );
+      return <GetUploads uploads={data.uploads} />;
     }}
   </Query>
 );
+
+class GetUploads extends Component {
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      uploads: props.uploads,
+    };
+  }
+
+  updateUploads = upload => {
+    this.setState({
+      uploads: [...this.state.uploads, upload],
+    });
+  };
+
+  render() {
+    return (
+      <>
+        <UpdateFile updateUploads={this.updateUploads} />
+        {this.state.uploads.map(({ filename, path }) => (
+          <div key={path}>
+            <p>
+              {path}: {filename}
+            </p>
+          </div>
+        ))}
+      </>
+    );
+  }
+}
 
 class App extends Component {
   render() {
     return (
       <ApolloProvider client={client}>
         <div className="App">
-          <GetBooks />
+          <GetUploadsQuery />
         </div>
       </ApolloProvider>
     );
