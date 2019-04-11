@@ -39,10 +39,9 @@ const typeDefs = `
 
 const resolvers = {
   Mutation: {
-    uploadFile: async (parent, args, context, info) => {
+    uploadFile: async (parent, args) => {
       try {
-        const { filename, mimetype, encoding, createReadStream } = await args
-          .input.file
+        const { filename, mimetype, createReadStream } = await args.input.file
 
         const asyncPipeline = promisify(pipeline)
 
@@ -53,8 +52,8 @@ const resolvers = {
 
         return { filename, mimetype, path: `build/images/${filename}` }
       } catch (e) {
-        throw e
         console.log(e)
+        throw e
       }
     },
   },
@@ -62,7 +61,6 @@ const resolvers = {
   Query: {
     uploads: async () => {
       const asyncReaddir = promisify(readdir)
-      let allFiles = []
       const files = (await asyncReaddir('build/images/')).map(f => ({
         path: join('build/images/', f),
         filename: f,
