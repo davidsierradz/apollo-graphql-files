@@ -1,13 +1,23 @@
-import { ApolloServer, gql } from 'apollo-server';
-import { GraphQLUpload } from 'graphql-upload';
-import fs, { readdir } from 'fs';
-import { join } from 'path';
-import { pipeline } from 'stream';
-import { promisify } from 'util';
+import { graphqlExpress } from 'apollo-server-express'
+import express from 'express'
+import { GraphQLUpload, graphqlUploadExpress } from 'graphql-upload'
+import fs, { readdir } from 'fs'
+import { join } from 'path'
+import { pipeline } from 'stream'
+import { promisify } from 'util'
+import { makeExecutableSchema } from 'graphql-tools'
+import cors from 'cors'
+import bodyParser from 'body-parser'
 
-// Type definitions define the "shape" of your data and specify
-// which ways the data can be fetched from the GraphQL server.
-const typeDefs = gql`
+const PORT = 4000
+
+const app = express()
+
+app.use(cors())
+
+const typeDefs = `
+  scalar Upload
+
   input UploadFileInput {
     file: Upload!
   }
@@ -18,8 +28,6 @@ const typeDefs = gql`
     mimetype: String
   }
 
-  # The "Query" type is the root of all GraphQL queries.
-  # (A "Mutation" type will be covered later on.)
   type Query {
     uploads: [File]
   }
@@ -27,51 +35,53 @@ const typeDefs = gql`
   type Mutation {
     uploadFile(input: UploadFileInput!): File!
   }
-`;
+`
 
-// Resolvers define the technique for fetching the types in the
-// schema.  We'll retrieve books from the "books" array above.
 const resolvers = {
   Mutation: {
     uploadFile: async (parent, args, context, info) => {
       try {
         const { filename, mimetype, encoding, createReadStream } = await args
-          .input.file;
+          .input.file
 
-        const asyncPipeline = promisify(pipeline);
+        const asyncPipeline = promisify(pipeline)
 
         await asyncPipeline(
           createReadStream(),
-          fs.createWriteStream(`build/images/${filename}`),
-        );
+          fs.createWriteStream(`build/images/${filename}`)
+        )
 
-        return { filename, mimetype, path: `build/images/${filename}` };
+        return { filename, mimetype, path: `build/images/${filename}` }
       } catch (e) {
-        console.log(e);
+        throw e
+        console.log(e)
       }
     },
   },
   Upload: GraphQLUpload,
   Query: {
     uploads: async () => {
-      const asyncReaddir = promisify(readdir);
-      let allFiles = [];
+      const asyncReaddir = promisify(readdir)
+      let allFiles = []
       const files = (await asyncReaddir('build/images/')).map(f => ({
         path: join('build/images/', f),
         filename: f,
-      }));
-      return files;
+      }))
+      return files
     },
   },
-};
+}
 
-// In the most basic sense, the ApolloServer can be started
-// by passing type definitions (typeDefs) and the resolvers
-// responsible for fetching the data for those types.
-const server = new ApolloServer({ typeDefs, resolvers });
+const myGraphQLSchema = makeExecutableSchema({
+  typeDefs,
+  resolvers,
+})
 
-// This `listen` method launches a web-server.  Existing apps
-// can utilize middleware options, which we'll discuss later.
-server.listen().then(({ url }) => {
-  console.log(`Server ready at ${url}`);
-});
+app.use(
+  '/graphql',
+  bodyParser.json(),
+  graphqlUploadExpress({ maxFileSize: 10000000, maxFiles: 10 }),
+  graphqlExpress({ schema: myGraphQLSchema })
+)
+
+app.listen(PORT)
